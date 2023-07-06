@@ -12,13 +12,15 @@ In this work, we present a novel scheme of masked autoencoders for point cloud s
 </div>
 
 ## 1. Requirements
-PyTorch >= 1.7.0 < 1.11.0;
+PyTorch >= 1.12.0 < 2.0;
 python >= 3.7;
-CUDA >= 9.0;
+CUDA >= 11.0;
 GCC >= 4.9;
 torchvision;
 
 ```
+pip install torch==1.12.0+cu113 torchvision==0.13.0+cu113 torchaudio==0.12.0 --extra-index-url https://download.pytorch.org/whl/cu113
+
 bash install.sh
 ```
 
