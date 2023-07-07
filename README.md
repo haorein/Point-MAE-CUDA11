@@ -77,6 +77,19 @@ cd segmentation
 python main.py --ckpts <path/to/pre-trained/model> --root path/to/data --learning_rate 0.0002 --epoch 300
 ```
 
+## 5. View experiment results
+
+Tensorboard is required to view the results, if it's not installed yet, then
+```bash
+pip install tensorboard
+```
+
+View results
+```bash
+tensorboard --logdir=/experiments/finetune_modelnet/cfgs/TFBoard/<output_file_name>
+```
+
+
 ## 6. Visualization
 
 Visulization of pre-trained model on ShapeNet validation set, run:
