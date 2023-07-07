@@ -1,4 +1,5 @@
-# Point-MAE
+# Point-MAE (CUDA 11)
+> This repository is forked from the main branch of the original repository, and fixes the problem that the requirements could not be installed with newer versions of CUDA.
 
 ## Masked Autoencoders for Point Cloud Self-supervised Learning, [ECCV 2022](https://www.ecva.net/papers/eccv_2022/papers_ECCV/papers/136620591.pdf), [ArXiv](https://arxiv.org/abs/2203.06604)
 
@@ -12,15 +13,16 @@ In this work, we present a novel scheme of masked autoencoders for point cloud s
 </div>
 
 ## 1. Requirements
-PyTorch >= 1.12.0 < 2.0;
+PyTorch >= 1.12.0 < 2.0; to install this version of PyTorch:
+```bash
+pip install torch==1.12.0+cu113 torchvision==0.13.0+cu113 torchaudio==0.12.0 --extra-index-url https://download.pytorch.org/whl/cu113
+```
 python >= 3.7;
 CUDA >= 11.0;
 GCC >= 4.9;
 torchvision;
 
 ```
-pip install torch==1.12.0+cu113 torchvision==0.13.0+cu113 torchaudio==0.12.0 --extra-index-url https://download.pytorch.org/whl/cu113
-
 bash install.sh
 ```
 
