@@ -11,16 +11,15 @@ from datasets import data_transforms
 from pointnet2_ops import pointnet2_utils
 from torchvision import transforms
 
-
 train_transforms = transforms.Compose(
     [
-         # data_transforms.PointcloudScale(),
-         # data_transforms.PointcloudRotate(),
-         # data_transforms.PointcloudTranslate(),
-         # data_transforms.PointcloudJitter(),
-         # data_transforms.PointcloudRandomInputDropout(),
-         # data_transforms.RandomHorizontalFlip(),
-         data_transforms.PointcloudScaleAndTranslate(),
+        # data_transforms.PointcloudScale(),
+        # data_transforms.PointcloudRotate(),
+        # data_transforms.PointcloudTranslate(),
+        # data_transforms.PointcloudJitter(),
+        # data_transforms.PointcloudRandomInputDropout(),
+        # data_transforms.RandomHorizontalFlip(),
+        data_transforms.PointcloudScaleAndTranslate(),
     ]
 )
 
@@ -35,7 +34,7 @@ test_transforms = transforms.Compose(
 
 
 class Acc_Metric:
-    def __init__(self, acc = 0.):
+    def __init__(self, acc=0.):
         if type(acc).__name__ == 'dict':
             self.acc = acc['acc']
         elif type(acc).__name__ == 'Acc_Metric':
@@ -54,14 +53,15 @@ class Acc_Metric:
         _dict['acc'] = self.acc
         return _dict
 
+
 def run_net(args, config, train_writer=None, val_writer=None):
     logger = get_logger(args.log_name)
     # build dataset
-    (train_sampler, train_dataloader), (_, test_dataloader),= builder.dataset_builder(args, config.dataset.train), \
-                                                            builder.dataset_builder(args, config.dataset.val)
+    (train_sampler, train_dataloader), (_, test_dataloader), = builder.dataset_builder(args, config.dataset.train), \
+        builder.dataset_builder(args, config.dataset.val)
     # build model
     base_model = builder.model_builder(config.model)
-    
+
     # parameter setting
     start_epoch = 0
     best_metrics = Acc_Metric(0.)
@@ -70,32 +70,33 @@ def run_net(args, config, train_writer=None, val_writer=None):
 
     # resume ckpts
     if args.resume:
-        start_epoch, best_metric = builder.resume_model(base_model, args, logger = logger)
+        start_epoch, best_metric = builder.resume_model(base_model, args, logger=logger)
         best_metrics = Acc_Metric(best_metrics)
     else:
         if args.ckpts is not None:
             base_model.load_model_from_ckpt(args.ckpts)
         else:
-            print_log('Training from scratch', logger = logger)
+            print_log('Training from scratch', logger=logger)
 
-    if args.use_gpu:    
+    if args.use_gpu:
         base_model.to(args.local_rank)
     # DDP
     if args.distributed:
         # Sync BN
         if args.sync_bn:
             base_model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(base_model)
-            print_log('Using Synchronized BatchNorm ...', logger = logger)
-        base_model = nn.parallel.DistributedDataParallel(base_model, device_ids=[args.local_rank % torch.cuda.device_count()])
-        print_log('Using Distributed Data parallel ...' , logger = logger)
+            print_log('Using Synchronized BatchNorm ...', logger=logger)
+        base_model = nn.parallel.DistributedDataParallel(base_model,
+                                                         device_ids=[args.local_rank % torch.cuda.device_count()])
+        print_log('Using Distributed Data parallel ...', logger=logger)
     else:
-        print_log('Using Data parallel ...' , logger = logger)
+        print_log('Using Data parallel ...', logger=logger)
         base_model = nn.DataParallel(base_model).cuda()
     # optimizer & scheduler
     optimizer, scheduler = builder.build_opti_sche(base_model, config)
-    
+
     if args.resume:
-        builder.resume_optimizer(optimizer, args, logger = logger)
+        builder.resume_optimizer(optimizer, args, logger=logger)
 
     # trainval
     # training
@@ -118,9 +119,9 @@ def run_net(args, config, train_writer=None, val_writer=None):
         for idx, (taxonomy_ids, model_ids, data) in enumerate(train_dataloader):
             num_iter += 1
             n_itr = epoch * n_batches + idx
-            
+
             data_time.update(time.time() - batch_start_time)
-            
+
             points = data[0].cuda()
             label = data[1].cuda()
 
@@ -140,7 +141,8 @@ def run_net(args, config, train_writer=None, val_writer=None):
 
             fps_idx = pointnet2_utils.furthest_point_sample(points, point_all)  # (B, npoint)
             fps_idx = fps_idx[:, np.random.choice(point_all, npoints, False)]
-            points = pointnet2_utils.gather_operation(points.transpose(1, 2).contiguous(), fps_idx).transpose(1, 2).contiguous()  # (B, N, 3)
+            points = pointnet2_utils.gather_operation(points.transpose(1, 2).contiguous(), fps_idx).transpose(1,
+                                                                                                              2).contiguous()  # (B, N, 3)
             # import pdb; pdb.set_trace()
             points = train_transforms(points)
 
@@ -167,16 +169,13 @@ def run_net(args, config, train_writer=None, val_writer=None):
             else:
                 losses.update([loss.item(), acc.item()])
 
-
             if args.distributed:
                 torch.cuda.synchronize()
-
 
             if train_writer is not None:
                 train_writer.add_scalar('Loss/Batch/Loss', loss.item(), n_itr)
                 train_writer.add_scalar('Loss/Batch/TrainAcc', acc.item(), n_itr)
                 train_writer.add_scalar('Loss/Batch/LR', optimizer.param_groups[0]['lr'], n_itr)
-
 
             batch_time.update(time.time() - batch_start_time)
             batch_start_time = time.time()
@@ -196,7 +195,8 @@ def run_net(args, config, train_writer=None, val_writer=None):
             train_writer.add_scalar('Loss/Epoch/Loss', losses.avg(0), epoch)
 
         print_log('[Training] EPOCH: %d EpochTime = %.3f (s) Losses = %s lr = %.6f' %
-            (epoch,  epoch_end_time - epoch_start_time, ['%.4f' % l for l in losses.avg()],optimizer.param_groups[0]['lr']), logger = logger)
+                  (epoch, epoch_end_time - epoch_start_time, ['%.4f' % l for l in losses.avg()],
+                   optimizer.param_groups[0]['lr']), logger=logger)
 
         if epoch % args.val_freq == 0 and epoch != 0:
             # Validate the current model
@@ -206,19 +206,24 @@ def run_net(args, config, train_writer=None, val_writer=None):
             # Save ckeckpoints
             if better:
                 best_metrics = metrics
-                builder.save_checkpoint(base_model, optimizer, epoch, metrics, best_metrics, 'ckpt-best', args, logger = logger)
-                print_log("--------------------------------------------------------------------------------------------", logger=logger)
+                builder.save_checkpoint(base_model, optimizer, epoch, metrics, best_metrics, 'ckpt-best', args,
+                                        logger=logger)
+                print_log(
+                    "--------------------------------------------------------------------------------------------",
+                    logger=logger)
             if args.vote:
                 if metrics.acc > 92.1 or (better and metrics.acc > 91):
-                    metrics_vote = validate_vote(base_model, test_dataloader, epoch, val_writer, args, config, logger=logger)
+                    metrics_vote = validate_vote(base_model, test_dataloader, epoch, val_writer, args, config,
+                                                 logger=logger)
                     if metrics_vote.better_than(best_metrics_vote):
                         best_metrics_vote = metrics_vote
                         print_log(
                             "****************************************************************************************",
                             logger=logger)
-                        builder.save_checkpoint(base_model, optimizer, epoch, metrics, best_metrics_vote, 'ckpt-best_vote', args, logger = logger)
+                        builder.save_checkpoint(base_model, optimizer, epoch, metrics, best_metrics_vote,
+                                                'ckpt-best_vote', args, logger=logger)
 
-        builder.save_checkpoint(base_model, optimizer, epoch, metrics, best_metrics, 'ckpt-last', args, logger = logger)      
+        builder.save_checkpoint(base_model, optimizer, epoch, metrics, best_metrics, 'ckpt-last', args, logger=logger)
         # if (config.max_epoch - epoch) < 10:
         #     builder.save_checkpoint(base_model, optimizer, epoch, metrics, best_metrics, f'ckpt-epoch-{epoch:03d}', args, logger = logger)
     if train_writer is not None:
@@ -226,11 +231,12 @@ def run_net(args, config, train_writer=None, val_writer=None):
     if val_writer is not None:
         val_writer.close()
 
-def validate(base_model, test_dataloader, epoch, val_writer, args, config, logger = None):
+
+def validate(base_model, test_dataloader, epoch, val_writer, args, config, logger=None):
     # print_log(f"[VALIDATION] Start validating epoch {epoch}", logger = logger)
     base_model.eval()  # set model to eval mode
 
-    test_pred  = []
+    test_pred = []
     test_label = []
     npoints = config.npoints
     with torch.no_grad():
@@ -268,11 +274,11 @@ def validate(base_model, test_dataloader, epoch, val_writer, args, config, logge
     return Acc_Metric(acc)
 
 
-def validate_vote(base_model, test_dataloader, epoch, val_writer, args, config, logger = None, times = 10):
-    print_log(f"[VALIDATION_VOTE] epoch {epoch}", logger = logger)
+def validate_vote(base_model, test_dataloader, epoch, val_writer, args, config, logger=None, times=10):
+    print_log(f"[VALIDATION_VOTE] epoch {epoch}", logger=logger)
     base_model.eval()  # set model to eval mode
 
-    test_pred  = []
+    test_pred = []
     test_label = []
     npoints = config.npoints
     with torch.no_grad():
@@ -287,7 +293,7 @@ def validate_vote(base_model, test_dataloader, epoch, val_writer, args, config, 
                 point_all = 8192
             else:
                 raise NotImplementedError()
-                
+
             if points_raw.size(1) < point_all:
                 point_all = points_raw.size(1)
 
@@ -296,8 +302,8 @@ def validate_vote(base_model, test_dataloader, epoch, val_writer, args, config, 
 
             for kk in range(times):
                 fps_idx = fps_idx_raw[:, np.random.choice(point_all, npoints, False)]
-                points = pointnet2_utils.gather_operation(points_raw.transpose(1, 2).contiguous(), 
-                                                        fps_idx).transpose(1, 2).contiguous()  # (B, N, 3)
+                points = pointnet2_utils.gather_operation(points_raw.transpose(1, 2).contiguous(),
+                                                          fps_idx).transpose(1, 2).contiguous()  # (B, N, 3)
 
                 points = test_transforms(points)
 
@@ -308,7 +314,6 @@ def validate_vote(base_model, test_dataloader, epoch, val_writer, args, config, 
 
             pred = torch.cat(local_pred, dim=0).mean(0)
             _, pred_choice = torch.max(pred, -1)
-
 
             test_pred.append(pred_choice)
             test_label.append(target.detach())
@@ -333,14 +338,13 @@ def validate_vote(base_model, test_dataloader, epoch, val_writer, args, config, 
     return Acc_Metric(acc)
 
 
-
 def test_net(args, config):
     logger = get_logger(args.log_name)
-    print_log('Tester start ... ', logger = logger)
+    print_log('Tester start ... ', logger=logger)
     _, test_dataloader = builder.dataset_builder(args, config.dataset.test)
     base_model = builder.model_builder(config.model)
     # load checkpoints
-    builder.load_model(base_model, args.ckpts, logger = logger) # for finetuned transformer
+    builder.load_model(base_model, args.ckpts, logger=logger)  # for finetuned transformer
     # base_model.load_model_from_ckpt(args.ckpts) # for BERT
     if args.use_gpu:
         base_model.to(args.local_rank)
@@ -348,14 +352,14 @@ def test_net(args, config):
     #  DDP    
     if args.distributed:
         raise NotImplementedError()
-     
-    test(base_model, test_dataloader, args, config, logger=logger)
-    
-def test(base_model, test_dataloader, args, config, logger = None):
 
+    test(base_model, test_dataloader, args, config, logger=logger)
+
+
+def test(base_model, test_dataloader, args, config, logger=None):
     base_model.eval()  # set model to eval mode
 
-    test_pred  = []
+    test_pred = []
     test_label = []
     npoints = config.npoints
 
@@ -387,7 +391,7 @@ def test(base_model, test_dataloader, args, config, logger = None):
         if args.distributed:
             torch.cuda.synchronize()
 
-        print_log(f"[TEST_VOTE]", logger = logger)
+        print_log(f"[TEST_VOTE]", logger=logger)
         acc = 0.
         for time in range(1, 300):
             this_acc = test_vote(base_model, test_dataloader, 1, None, args, config, logger=logger, times=10)
@@ -396,11 +400,11 @@ def test(base_model, test_dataloader, args, config, logger = None):
             print_log('[TEST_VOTE_time %d]  acc = %.4f, best acc = %.4f' % (time, this_acc, acc), logger=logger)
         print_log('[TEST_VOTE] acc = %.4f' % acc, logger=logger)
 
-def test_vote(base_model, test_dataloader, epoch, val_writer, args, config, logger = None, times = 10):
 
+def test_vote(base_model, test_dataloader, epoch, val_writer, args, config, logger=None, times=10):
     base_model.eval()  # set model to eval mode
 
-    test_pred  = []
+    test_pred = []
     test_label = []
     npoints = config.npoints
     with torch.no_grad():
@@ -415,7 +419,7 @@ def test_vote(base_model, test_dataloader, epoch, val_writer, args, config, logg
                 point_all = 8192
             else:
                 raise NotImplementedError()
-                
+
             if points_raw.size(1) < point_all:
                 point_all = points_raw.size(1)
 
@@ -424,8 +428,8 @@ def test_vote(base_model, test_dataloader, epoch, val_writer, args, config, logg
 
             for kk in range(times):
                 fps_idx = fps_idx_raw[:, np.random.choice(point_all, npoints, False)]
-                points = pointnet2_utils.gather_operation(points_raw.transpose(1, 2).contiguous(), 
-                                                        fps_idx).transpose(1, 2).contiguous()  # (B, N, 3)
+                points = pointnet2_utils.gather_operation(points_raw.transpose(1, 2).contiguous(),
+                                                          fps_idx).transpose(1, 2).contiguous()  # (B, N, 3)
 
                 points = test_transforms(points)
 
@@ -436,7 +440,6 @@ def test_vote(base_model, test_dataloader, epoch, val_writer, args, config, logg
 
             pred = torch.cat(local_pred, dim=0).mean(0)
             _, pred_choice = torch.max(pred, -1)
-
 
             test_pred.append(pred_choice)
             test_label.append(target.detach())
@@ -457,5 +460,5 @@ def test_vote(base_model, test_dataloader, epoch, val_writer, args, config, logg
     if val_writer is not None:
         val_writer.add_scalar('Metric/ACC_vote', acc, epoch)
     # print_log('[TEST] acc = %.4f' % acc, logger=logger)
-    
+
     return acc
